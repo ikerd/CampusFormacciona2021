@@ -28,7 +28,10 @@ $yellow:          #fbad1a !default; // Accent (never text).
 $yellow-light:    mix($yellow, white, 20%) !default;
 $yellow-dark:     mix($yellow, black, 40%) !default;
 
-$brand-color:    #f98012 !default;
+$forma-azul:      #173e78; // Azul Formacciona
+$forma-verde:     #c6d224; // Verde Formacciona
+
+$brand-color:    $forma-azul !default;
 
 $text-color:               $black !default;
 $text-color-rgb:           color-to-rgb-list($text-color) !default;

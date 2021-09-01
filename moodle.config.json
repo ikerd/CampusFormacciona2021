@@ -1,13 +1,13 @@
 {
-    "app_id": "com.moodle.moodlemobile",
-    "appname": "Moodle Mobile",
+    "app_id": "com.binuc.formacciona",
+    "appname": "Formacciona",
     "versioncode": 3960,
-    "versionname": "3.9.6-dev",
+    "versionname": "3.9.6",
     "cache_update_frequency_usually": 420000,
     "cache_update_frequency_often": 1200000,
     "cache_update_frequency_sometimes": 3600000,
     "cache_update_frequency_rarely": 43200000,
-    "default_lang": "en",
+    "default_lang": "es",
     "languages": {
         "af": "Afrikaans",
         "ar": "عربي",
@@ -63,26 +63,15 @@
     },
     "wsservice": "moodle_mobile_app",
     "wsextservice": "local_mobile",
-    "demo_sites": {
-        "student": {
-            "url": "https:\/\/school.moodledemo.net",
-            "username": "student",
-            "password": "moodle"
-        },
-        "teacher": {
-            "url": "https:\/\/school.moodledemo.net",
-            "username": "teacher",
-            "password": "moodle"
-        }
-    },
+    "demo_sites": {},
     "zoomlevels": {
         "normal": 100,
         "low": 110,
         "high": 120
     },
     "customurlscheme": "moodlemobile",
-    "siteurl": "",
-    "sitename": "",
+    "siteurl": "https://campus2021.formacciona.com/",
+    "sitename": "Campus Formacciona 2021",
     "multisitesdisplay": "",
     "sitefindersettings": {},
     "onlyallowlistedsites": false,
@@ -96,7 +85,7 @@
     "forceLoginLogo": false,
     "ioswebviewscheme": "moodleappfs",
     "appstores": {
-        "android": "com.moodle.moodlemobile",
-        "ios": "id633359593"
+        "android": "com.binuc.formacciona",
+        "ios": "com.binuc.formacciona"
     }
 }

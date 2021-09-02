@@ -85,7 +85,7 @@
     "forceLoginLogo": false,
     "ioswebviewscheme": "moodleappfs",
     "appstores": {
-        "android": "com.binuc.formacciona",
-        "ios": "com.binuc.formacciona"
+        "android": "binuc.moodle.moodlemobile",
+        "ios": "binuc.moodle.moodlemobile"
     }
 }

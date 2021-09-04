@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import { Injectable } from '@angular/core';
+import { CoreError } from '@classes/errors/error';
 import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
 import { CoreCourseCommonModWSOptions } from '@features/course/services/course';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
@@ -480,7 +481,7 @@ export class AddonModForumProvider {
         const forum = forums.find(forum => forum.cmid == cmId);
 
         if (!forum) {
-            throw new Error('Forum not found');
+            throw new CoreError(Translate.instant('core.course.modulenotfound'));
         }
 
         return forum;
@@ -1558,9 +1559,9 @@ export type AddonModForumAccessInformation = {
 };
 
 /**
- * Reply info.
+ * Post creation or edition data.
  */
-export type AddonModForumReply = {
+export type AddonModForumPostFormData = {
     id: number;
     subject: string | null; // Null means original data is not set.
     message: string | null; // Null means empty or just white space.

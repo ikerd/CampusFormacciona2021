@@ -38,6 +38,7 @@ import { CoreViewerImageComponent } from '@features/viewer/components/image/imag
 import { CoreFormFields, CoreForms } from '../../singletons/form';
 import { CoreModalLateralTransitionEnter, CoreModalLateralTransitionLeave } from '@classes/modal-lateral-transition';
 import { CoreZoomLevel } from '@features/settings/services/settings-helper';
+import { CoreErrorWithTitle } from '@classes/errors/errorwithtitle';
 
 /*
  * "Utils" service with helper functions for UI, DOM elements and HTML code.
@@ -1376,6 +1377,8 @@ export class CoreDomUtilsProvider {
 
         if (this.isNetworkError(message, error)) {
             alertOptions.cssClass = 'core-alert-network-error';
+        } else if (error instanceof CoreErrorWithTitle) {
+            alertOptions.header = error.title || undefined;
         } else {
             alertOptions.header = Translate.instant('core.error');
         }
@@ -1728,12 +1731,12 @@ export class CoreDomUtilsProvider {
     /**
      * Opens a popover.
      *
-     * @param popoverOptions Modal Options.
+     * @param options Options.
+     * @return Promise resolved when the popover is dismissed or will be dismissed.
      */
-    async openPopover<T = void>(
-        popoverOptions: PopoverOptions,
-    ): Promise<T | undefined> {
+    async openPopover<T = void>(options: OpenPopoverOptions): Promise<T | undefined> {
 
+        const { waitForDismissCompleted, ...popoverOptions } = options;
         const popover = await PopoverController.create(popoverOptions);
         const zoomLevel = await CoreConfig.get(CoreConstants.SETTINGS_ZOOM_LEVEL, CoreZoomLevel.NORMAL);
 
@@ -1743,16 +1746,15 @@ export class CoreDomUtilsProvider {
         if (zoomLevel !== CoreZoomLevel.NORMAL) {
             switch (getMode()) {
                 case 'ios':
-                    fixIOSPopoverPosition(popover, popoverOptions.event);
+                    fixIOSPopoverPosition(popover, options.event);
                     break;
                 case 'md':
-                    fixMDPopoverPosition(popover, popoverOptions.event);
+                    fixMDPopoverPosition(popover, options.event);
                     break;
             }
         }
 
-        // If onDidDismiss is nedded we can add a new param to the function to wait one function or the other.
-        const result = await popover.onWillDismiss<T>();
+        const result = waitForDismissCompleted ? await popover.onDidDismiss<T>() : await popover.onWillDismiss<T>();
         if (result?.data) {
             return result?.data;
         }
@@ -2046,3 +2048,10 @@ export const CoreDomUtils = makeSingleton(CoreDomUtilsProvider);
 
 type AnchorOrMediaElement =
     HTMLAnchorElement | HTMLImageElement | HTMLAudioElement | HTMLVideoElement | HTMLSourceElement | HTMLTrackElement;
+
+/**
+ * Options for the openPopover function.
+ */
+export type OpenPopoverOptions = PopoverOptions & {
+    waitForDismissCompleted?: boolean;
+};

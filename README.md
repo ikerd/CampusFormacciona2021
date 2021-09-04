@@ -26,6 +26,7 @@ Versión de node y npm necesarias (Para la versión 3.9.6):
 Como hacer una nueva release de la app:
 
 * Hacer un sync del fork con el repo oficial
+* Borrar ./plugins/ y contenidos de ./www
 * Hacer los cambios necesarios en ```resources``` | ```moodle.config.json``` | ```config.xml```
 * En el caso de perderlos obtener de nuevo ```google-services.json``` & ```GoogleService-Info.plist```
 * ```ionic cordova platform remove ios``` & ```ionic cordova platform remove android```

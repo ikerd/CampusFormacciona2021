@@ -126,7 +126,7 @@ export class CoreCourseProvider {
     canGetCourseBlocks(site?: CoreSite): boolean {
         site = site || CoreSites.getCurrentSite();
 
-        return !!site && site.isVersionGreaterEqualThan('3.7') && site.wsAvailable('core_block_get_course_blocks');
+        return !!site && site.isVersionGreaterEqualThan('3.7');
     }
 
     /**
@@ -134,12 +134,12 @@ export class CoreCourseProvider {
      *
      * @param site Site. If not defined, current site.
      * @return Whether the site supports requesting stealth modules.
-     * @since 3.4.6, 3.5.3, 3.6
+     * @since 3.5.3, 3.6
      */
     canRequestStealthModules(site?: CoreSite): boolean {
         site = site || CoreSites.getCurrentSite();
 
-        return !!site && site.isVersionGreaterEqualThan(['3.4.6', '3.5.3']);
+        return !!site && site.isVersionGreaterEqualThan('3.5.3');
     }
 
     /**
@@ -538,20 +538,11 @@ export class CoreCourseProvider {
     /**
      * Gets a module basic grade info by module ID.
      *
-     * If the user does not have permision to manage the activity false is returned.
-     *
      * @param moduleId Module ID.
      * @param siteId Site ID. If not defined, current site.
      * @return Promise resolved with the module's grade info.
      */
     async getModuleBasicGradeInfo(moduleId: number, siteId?: string): Promise<CoreCourseModuleGradeInfo | undefined> {
-        const site = await CoreSites.getSite(siteId);
-
-        if (!site || !site.isVersionGreaterEqualThan('3.2')) {
-            // On 3.1 won't get grading info and will return undefined. See check bellow.
-            return;
-        }
-
         const info = await this.getModuleBasicInfo(moduleId, siteId);
 
         const grade: CoreCourseModuleGradeInfo = {
@@ -568,7 +559,6 @@ export class CoreCourseProvider {
             typeof grade.advancedgrading != 'undefined' ||
             typeof grade.outcomes != 'undefined'
         ) {
-            // On 3.1 won't get grading info and will return undefined.
             return grade;
         }
 
@@ -895,7 +885,45 @@ export class CoreCourseProvider {
         }
 
         const mod = await this.getModule(module.id, courseId, sectionId, preferCache, ignoreCache, siteId, modName);
+
+        if (!mod.contents) {
+            throw new CoreError(Translate.instant('core.course.modulenotfound'));
+        }
+
         module.contents = mod.contents;
+    }
+
+    /**
+     * Get module contents. If not present, this function will try to load them into module.contents.
+     * It will throw an error if contents cannot be loaded.
+     *
+     * @param module Module to get its contents.
+     * @param courseId The course ID. Recommended to speed up the process and minimize data usage.
+     * @param sectionId The section ID.
+     * @param preferCache True if shouldn't call WS if data is cached, false otherwise.
+     * @param ignoreCache True if it should ignore cached data (it will always fail in offline or server down).
+     * @param siteId Site ID. If not defined, current site.
+     * @param modName If set, the app will retrieve all modules of this type with a single WS call. This reduces the
+     *                number of WS calls, but it isn't recommended for modules that can return a lot of contents.
+     * @return Promise resolved when loaded.
+     */
+    async getModuleContents(
+        module: CoreCourseAnyModuleData,
+        courseId?: number,
+        sectionId?: number,
+        preferCache?: boolean,
+        ignoreCache?: boolean,
+        siteId?: string,
+        modName?: string,
+    ): Promise<CoreCourseModuleContentFile[]> {
+        // Make sure contents are loaded.
+        await this.loadModuleContents(module, courseId, sectionId, preferCache, ignoreCache, siteId, modName);
+
+        if (!module.contents) {
+            throw new CoreError(Translate.instant('core.course.modulenotfound'));
+        }
+
+        return module.contents;
     }
 
     /**
@@ -1253,12 +1281,12 @@ export type CoreCourseSummary = {
     fullname: string; // Fullname.
     shortname: string; // Shortname.
     idnumber: string; // Idnumber.
-    summary: string; // @since 3.3. Summary.
-    summaryformat: number; // @since 3.3. Summary format (1 = HTML, 0 = MOODLE, 2 = PLAIN or 4 = MARKDOWN).
-    startdate: number; // @since 3.3. Startdate.
-    enddate: number; // @since 3.3. Enddate.
+    summary: string; // Summary.
+    summaryformat: number; // Summary format (1 = HTML, 0 = MOODLE, 2 = PLAIN or 4 = MARKDOWN).
+    startdate: number; // Startdate.
+    enddate: number; // Enddate.
     visible: boolean; // @since 3.8. Visible.
-    fullnamedisplay: string; // @since 3.3. Fullnamedisplay.
+    fullnamedisplay: string; // Fullnamedisplay.
     viewurl: string; // Viewurl.
     courseimage: string; // @since 3.6. Courseimage.
     progress?: number; // @since 3.6. Progress.
@@ -1460,7 +1488,7 @@ export type CoreCourseWSModule = {
     noviewlink?: boolean; // Whether the module has no view page.
     completion?: number; // Type of completion tracking: 0 means none, 1 manual, 2 automatic.
     completiondata?: CoreCourseModuleWSCompletionData; // Module completion data.
-    contents: CoreCourseModuleContentFile[];
+    contents?: CoreCourseModuleContentFile[];
     dates?: {
         label: string;
         timestamp: number;
@@ -1522,7 +1550,7 @@ export type CoreCourseModuleContentFile = {
 };
 
 /**
- * Course module basic info type. 3.2 onwards.
+ * Course module basic info type.
  */
 export type CoreCourseModuleGradeInfo = {
     grade?: number; // Grade (max value or scale id).
@@ -1599,5 +1627,5 @@ type CoreCompletionUpdateActivityCompletionStatusManuallyWSParams = {
  * Any of the possible module WS data.
  */
 export type CoreCourseAnyModuleData = CoreCourseWSModule | CoreCourseModuleBasicInfo & {
-    contents?: CoreCourseModuleContentFile[]; // Calculated in the app in loadModuleContents.
+    contents?: CoreCourseModuleContentFile[]; // If needed, calculated in the app in loadModuleContents.
 };

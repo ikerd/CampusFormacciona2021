@@ -11,7 +11,7 @@
         <ion-refresher slot="fixed" [disabled]="!grades.loaded" (ionRefresh)="refreshGrades($event.target)">
             <ion-refresher-content pullingText="{{ 'core.pulltorefresh' | translate }}"></ion-refresher-content>
         </ion-refresher>
-        <core-loading [hideUntil]="grades.loaded" class="safe-area-page">
+        <core-loading [hideUntil]="grades.loaded" class="safe-area-padding">
             <core-empty-box *ngIf="grades.empty" icon="fas-chart-bar" [message]="'core.grades.nogradesreturned' | translate">
             </core-empty-box>
             <div *ngIf="!grades.empty" class="core-grades-container">
@@ -52,8 +52,11 @@
                                 >
                                     <ion-icon *ngIf="row.icon" name="{{row.icon}}" slot="start" [attr.aria-label]="row.iconAlt">
                                     </ion-icon>
-                                    <img *ngIf="row.image" [src]="row.image" slot="start" class="core-module-icon"
+                                    <img *ngIf="row.image && !row.itemmodule" [src]="row.image" slot="start" class="core-module-icon"
                                         [alt]="row.iconAlt"/>
+                                    <core-mod-icon *ngIf="row.image && row.itemmodule" [modicon]="row.image" slot="start"
+                                        [modname]="row.itemmodule">
+                                    </core-mod-icon>
                                     <span [innerHTML]="row.gradeitem"></span>
                                 </th>
                                 <ng-container *ngFor="let column of grades.columns">

@@ -16,28 +16,23 @@ import { Injectable, Type } from '@angular/core';
 
 import { CoreConstants } from '@/core/constants';
 import { CoreCourseModuleHandler, CoreCourseModuleHandlerData } from '@features/course/services/module-delegate';
-import { CoreCourse, CoreCourseAnyModuleData } from '@features/course/services/course';
 import { CoreCourseModule } from '@features/course/services/course-helper';
-import { CoreApp } from '@services/app';
-import { CoreFilepool } from '@services/filepool';
-import { CoreNavigationOptions, CoreNavigator } from '@services/navigator';
-import { CoreSites } from '@services/sites';
-import { CoreUtils } from '@services/utils/utils';
-import { DomSanitizer, makeSingleton } from '@singletons';
+import { makeSingleton } from '@singletons';
 import { AddonModLtiHelper } from '../lti-helper';
-import { AddonModLti, AddonModLtiProvider } from '../lti';
 import { AddonModLtiIndexComponent } from '../../components/index';
+import { CoreModuleHandlerBase } from '@features/course/classes/module-base-handler';
 
 /**
  * Handler to support LTI modules.
  */
 @Injectable({ providedIn: 'root' })
-export class AddonModLtiModuleHandlerService implements CoreCourseModuleHandler {
+export class AddonModLtiModuleHandlerService extends CoreModuleHandlerBase implements CoreCourseModuleHandler {
 
     static readonly PAGE_NAME = 'mod_lti';
 
     name = 'AddonModLti';
     modName = 'lti';
+    protected pageName = AddonModLtiModuleHandlerService.PAGE_NAME;
 
     supportedFeatures = {
         [CoreConstants.FEATURE_GROUPS]: false,
@@ -53,87 +48,34 @@ export class AddonModLtiModuleHandlerService implements CoreCourseModuleHandler 
     /**
      * @inheritdoc
      */
-    async isEnabled(): Promise<boolean> {
-        return true;
-    }
-
-    /**
-     * @inheritdoc
-     */
-    getData(
-        module: CoreCourseAnyModuleData,
+    async getData(
+        module: CoreCourseModule,
         courseId: number,
-    ): CoreCourseModuleHandlerData {
-
-        const data: CoreCourseModuleHandlerData = {
-            icon: CoreCourse.getModuleIconSrc(this.modName, 'modicon' in module ? module.modicon : undefined),
-            title: module.name,
-            class: 'addon-mod_lti-handler',
-            action(event: Event, module: CoreCourseModule, courseId: number, options?: CoreNavigationOptions): void {
-                options = options || {};
-                options.params = options.params || {};
-                Object.assign(options.params, { module });
-                const routeParams = '/' + courseId + '/' + module.id;
-
-                CoreNavigator.navigateToSitePath(AddonModLtiModuleHandlerService.PAGE_NAME + routeParams, options);
-            },
-            buttons: [{
-                icon: 'fas-external-link-alt',
-                label: 'addon.mod_lti.launchactivity',
-                action: (event: Event, module: CoreCourseModule, courseId: number): void => {
-                    // Launch the LTI.
-                    AddonModLtiHelper.getDataAndLaunch(courseId, module);
-                },
-            }],
-        };
+        sectionId?: number,
+        forCoursePage?: boolean,
+    ): Promise<CoreCourseModuleHandlerData> {
+        const data = await super.getData(module, courseId, sectionId, forCoursePage);
+        data.showDownloadButton = false;
 
         // Handle custom icons.
-        CoreUtils.ignoreErrors(this.loadCustomIcon(module, courseId, data));
+        data.icon =  module.modicon;
+
+        data.buttons = [{
+            icon: 'fas-external-link-alt',
+            label: 'addon.mod_lti.launchactivity',
+            action: (event: Event, module: CoreCourseModule, courseId: number): void => {
+                // Launch the LTI.
+                AddonModLtiHelper.getDataAndLaunch(courseId, module);
+            },
+        }];
 
         return data;
     }
 
     /**
-     * Load the custom icon.
-     *
-     * @param module Module.
-     * @param courseId Course ID.
-     * @param data Handler data.
-     * @return Promise resolved when done.
-     */
-    protected async loadCustomIcon(
-        module: CoreCourseAnyModuleData,
-        courseId: number,
-        handlerData: CoreCourseModuleHandlerData,
-    ): Promise<void> {
-        const lti = await AddonModLti.getLti(courseId, module.id);
-
-        const icon = lti.secureicon || lti.icon;
-        if (!icon) {
-            return;
-        }
-
-        const siteId = CoreSites.getCurrentSiteId();
-
-        try {
-            await CoreFilepool.downloadUrl(siteId, icon, false, AddonModLtiProvider.COMPONENT, module.id);
-
-            // Get the internal URL.
-            const url = await CoreFilepool.getSrcByUrl(siteId, icon, AddonModLtiProvider.COMPONENT, module.id);
-
-            handlerData.icon = DomSanitizer.bypassSecurityTrustUrl(url);
-        } catch {
-            // Error downloading. If we're online we'll set the online url.
-            if (CoreApp.isOnline()) {
-                handlerData.icon = DomSanitizer.bypassSecurityTrustUrl(icon);
-            }
-        }
-    }
-
-    /**
      * @inheritdoc
      */
-    async getMainComponent(): Promise<Type<unknown> | undefined> {
+    async getMainComponent(): Promise<Type<unknown>> {
         return AddonModLtiIndexComponent;
     }
 

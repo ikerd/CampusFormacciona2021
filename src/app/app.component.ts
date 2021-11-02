@@ -63,7 +63,6 @@ export class AppComponent implements OnInit, AfterViewInit {
      * - IAB events listening.
      * - Platform pause/resume subscriptions.
      * - handleOpenURL and openWindowSafely.
-     * - Screen orientation events (probably it can be removed).
      * - Back button registering to close modal first.
      * - Note: HideKeyboardFormAccessoryBar has been moved to config.xml.
      */
@@ -120,12 +119,12 @@ export class AppComponent implements OnInit, AfterViewInit {
                 });
                 CoreUtils.closeInAppBrowser();
 
-            } else if (CoreApp.instance.isAndroid()) {
+            } else if (CoreApp.isAndroid()) {
                 // Check if the URL has a custom URL scheme. In Android they need to be opened manually.
                 const urlScheme = CoreUrlUtils.getUrlProtocol(url);
                 if (urlScheme && urlScheme !== 'file' && urlScheme !== 'cdvfile') {
                     // Open in browser should launch the right app if found and do nothing if not found.
-                    CoreUtils.openInBrowser(url);
+                    CoreUtils.openInBrowser(url, { showBrowserWarning: false });
 
                     // At this point the InAppBrowser is showing a "Webpage not available" error message.
                     // Try to navigate to last loaded URL so this error message isn't found.
@@ -297,6 +296,9 @@ export class AppComponent implements OnInit, AfterViewInit {
                 }
             });
         });
+
+        const isOnline = CoreApp.isOnline();
+        document.body.classList.toggle('core-offline', !isOnline);
 
         // Set StatusBar properties.
         CoreApp.setStatusBarColor();

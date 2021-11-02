@@ -2,7 +2,7 @@
 <core-navbar-buttons slot="end">
     <core-context-menu>
         <core-context-menu-item *ngIf="externalUrl" [priority]="900" [content]="'core.openinbrowser' | translate"
-            [href]="externalUrl" iconAction="fas-external-link-alt"></core-context-menu-item>
+            [href]="externalUrl" iconAction="fas-external-link-alt" [showBrowserWarning]="false"></core-context-menu-item>
         <core-context-menu-item *ngIf="description" [priority]="800" [content]="'core.moduleintro' | translate"
             (action)="expandDescription()" iconAction="fas-arrow-right"></core-context-menu-item>
         <core-context-menu-item *ngIf="blog" [priority]="750" content="{{'addon.blog.blog' | translate}}"
@@ -32,7 +32,7 @@
         <ion-item *ngIf="shouldEmbed">
             <ion-label>
                 <img *ngIf="isImage" [alt]="name" [src]="url">
-                <video *ngIf="isVideo" [title]="name" controls>
+                <video *ngIf="isVideo" [title]="name" controls controlsList="nodownload">
                     <source [src]="url" [type]="mimetype">
                 </video>
                 <audio *ngIf="isAudio" [title]="name" controls>

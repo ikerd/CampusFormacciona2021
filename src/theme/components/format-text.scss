@@ -201,14 +201,6 @@ core-format-text {
     }
 }
 
-// Erase if core-format-text display is contents again.
-.flex > core-format-text {
-    display: flex;
-}
-.core-course-title > p.item-heading > core-format-text {
-    display: inline;
-}
-
 @keyframes loading {
     0% {
         left: -45%;
@@ -325,6 +317,10 @@ core-rich-text-editor .core-rte-editor {
         ul, ol {
             @include margin(null, null, null, 15px);
         }
+    }
+
+    sub, sup {
+        overflow: visible !important;
     }
 
     .badge {
@@ -548,7 +544,7 @@ core-rich-text-editor .core-rte-editor {
             --color-base: var(--ion-color-#{$color-name});
             color: var(--color-base);
             border-color: var(--color-base);
-            background-color: var(--ion-color-#{$color-name}-tint);
+            background-color: var(--ion-color-#{$color-name}-lighter);
 
             .alert-link {
                 color: var(--ion-color-#{$color-name}-shade);

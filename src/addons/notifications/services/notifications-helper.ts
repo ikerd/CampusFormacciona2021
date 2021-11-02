@@ -14,20 +14,16 @@
 
 import { Injectable } from '@angular/core';
 
-import { CoreSites } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
 import { makeSingleton } from '@singletons';
 import { AddonMessageOutputDelegate } from '@addons/messageoutput/services/messageoutput-delegate';
 import {
-    AddonNotifications,
-    AddonNotificationsAnyNotification,
-    AddonNotificationsGetNotificationsOptions,
+    AddonNotificationsNotificationMessageFormatted,
     AddonNotificationsPreferences,
     AddonNotificationsPreferencesComponent,
     AddonNotificationsPreferencesNotification,
     AddonNotificationsPreferencesNotificationProcessor,
     AddonNotificationsPreferencesProcessor,
-    AddonNotificationsProvider,
 } from './notifications';
 
 /**
@@ -35,6 +31,20 @@ import {
  */
 @Injectable({ providedIn: 'root' })
 export class AddonNotificationsHelperProvider {
+
+    /**
+     * Formats the text of a notification.
+     *
+     * @param notification The notification object.
+     */
+    formatNotificationText(
+        notification: AddonNotificationsNotificationMessageFormatted,
+    ): AddonNotificationsNotificationToRender {
+        const formattedNotification: AddonNotificationsNotificationToRender = notification;
+        formattedNotification.iconurl = formattedNotification.iconurl || undefined; // Make sure the property exists.
+
+        return formattedNotification;
+    }
 
     /**
      * Format preferences data.
@@ -56,57 +66,6 @@ export class AddonNotificationsHelperProvider {
         });
 
         return formattedPreferences;
-    }
-
-    /**
-     * Get some notifications. It will try to use the new WS if available.
-     *
-     * @param notifications Current list of loaded notifications. It's used to calculate the offset.
-     * @param options Other options.
-     * @return Promise resolved with notifications and if can load more.
-     */
-    async getNotifications(
-        notifications: AddonNotificationsAnyNotification[],
-        options?: AddonNotificationsHelperGetNotificationsOptions,
-    ): Promise<{notifications: AddonNotificationsAnyNotification[]; canLoadMore: boolean}> {
-
-        notifications = notifications || [];
-        options = options || {};
-        options.limit = options.limit || AddonNotificationsProvider.LIST_LIMIT;
-        options.siteId = options.siteId || CoreSites.getCurrentSiteId();
-
-        if (options.onlyPopupNotifications) {
-            return AddonNotifications.getPopupNotifications(notifications.length, options);
-        }
-
-        // Use get_messages. We need 2 calls, one for read and the other one for unread.
-        const unreadFrom = notifications.reduce((total, current) => total + (current.read ? 0 : 1), 0);
-
-        const unread = await AddonNotifications.getUnreadNotifications(unreadFrom, options);
-
-        let newNotifications = unread;
-
-        if (unread.length < options.limit) {
-            // Limit not reached. Get read notifications until reach the limit.
-            const readLimit = options.limit - unread.length;
-            const readFrom = notifications.length - unreadFrom;
-            const readOptions = Object.assign({}, options, { limit: readLimit });
-
-            try {
-                const read = await AddonNotifications.getReadNotifications(readFrom, readOptions);
-
-                newNotifications = unread.concat(read);
-            } catch (error) {
-                if (unread.length <= 0) {
-                    throw error;
-                }
-            }
-        }
-
-        return {
-            notifications: newNotifications,
-            canLoadMore: notifications.length >= options.limit,
-        };
     }
 
     /**
@@ -209,8 +168,8 @@ export type AddonNotificationsPreferencesProcessorFormatted = AddonNotifications
 };
 
 /**
- * Options to pass to getNotifications.
+ * Notification with some calculated data to render it.
  */
-export type AddonNotificationsHelperGetNotificationsOptions = AddonNotificationsGetNotificationsOptions & {
-    onlyPopupNotifications?: boolean; // Whether to get only popup notifications.
+export type AddonNotificationsNotificationToRender = AddonNotificationsNotificationMessageFormatted & {
+    iconurl?: string;
 };

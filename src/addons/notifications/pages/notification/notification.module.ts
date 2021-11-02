@@ -16,15 +16,13 @@ import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 
 import { CoreSharedModule } from '@/core/shared.module';
-import { CoreCoursesComponentsModule } from '../../components/components.module';
-import { CoreSearchComponentsModule } from '@features/search/components/components.module';
-
-import { CoreCoursesSearchPage } from './search';
+import { AddonNotificationsComponentsModule } from '../../components/components.module';
+import { AddonNotificationsNotificationPage } from './notification';
 
 const routes: Routes = [
     {
         path: '',
-        component: CoreCoursesSearchPage,
+        component: AddonNotificationsNotificationPage,
     },
 ];
 
@@ -32,12 +30,11 @@ const routes: Routes = [
     imports: [
         RouterModule.forChild(routes),
         CoreSharedModule,
-        CoreCoursesComponentsModule,
-        CoreSearchComponentsModule,
+        AddonNotificationsComponentsModule,
     ],
     declarations: [
-        CoreCoursesSearchPage,
+        AddonNotificationsNotificationPage,
     ],
     exports: [RouterModule],
 })
-export class CoreCoursesSearchPageModule { }
+export class AddonNotificationsNotificationPageModule {}

@@ -40,14 +40,26 @@ import { CoreNavigator } from '@services/navigator';
 })
 export class CoreGradesCoursePage implements AfterViewInit, OnDestroy {
 
-    grades: CoreGradesCourseManager;
+    grades!: CoreGradesCourseManager;
     splitViewMode?: CoreSplitViewMode;
 
     @ViewChild(CoreSplitViewComponent) splitView!: CoreSplitViewComponent;
 
     constructor(protected route: ActivatedRoute) {
-        const courseId = CoreNavigator.getRouteNumberParam('courseId', { route })!;
-        const userId = CoreNavigator.getRouteNumberParam('userId', { route }) ?? CoreSites.getCurrentSiteUserId();
+        let courseId: number;
+        let userId: number;
+
+        try {
+            courseId = CoreNavigator.getRequiredRouteNumberParam('courseId', { route });
+            userId = CoreNavigator.getRouteNumberParam('userId', { route }) ?? CoreSites.getCurrentSiteUserId();
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
+
+            CoreNavigator.back();
+
+            return;
+        }
+
         const useSplitView = route.snapshot.data.useSplitView ?? true;
         const outsideGradesTab = route.snapshot.data.outsideGradesTab ?? false;
 
@@ -102,7 +114,7 @@ export class CoreGradesCoursePage implements AfterViewInit, OnDestroy {
      * Update the table of grades.
      */
     private async fetchGrades(): Promise<void> {
-        const table = await CoreGrades.getCourseGradesTable(this.grades.courseId!, this.grades.userId);
+        const table = await CoreGrades.getCourseGradesTable(this.grades.courseId, this.grades.userId);
         const formattedTable = await CoreGradesHelper.formatGradesTable(table);
 
         this.grades.setTable(formattedTable);
@@ -180,7 +192,7 @@ class CoreGradesCourseManager extends CorePageItemsListManager<CoreGradesFormatt
      * @inheritdoc
      */
     protected async logActivity(): Promise<void> {
-        await CoreGrades.logCourseGradesView(this.courseId!, this.userId!);
+        await CoreGrades.logCourseGradesView(this.courseId, this.userId);
     }
 
     /**

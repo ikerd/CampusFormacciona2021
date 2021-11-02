@@ -166,8 +166,8 @@ export class CoreFormatTextDirective implements OnChanges {
         const originalWidth = img.attributes.getNamedItem('width');
 
         const forcedWidth = Number(originalWidth?.value);
-        if (!isNaN(forcedWidth)) {
-            if (originalWidth!.value.indexOf('%') < 0) {
+        if (originalWidth && !isNaN(forcedWidth)) {
+            if (originalWidth.value.indexOf('%') < 0) {
                 img.style.width = forcedWidth + 'px';
             } else {
                 img.style.width = forcedWidth + '%';
@@ -555,7 +555,7 @@ export class CoreFormatTextDirective implements OnChanges {
         });
 
         videos.forEach((video) => {
-            this.treatMedia(video);
+            this.treatMedia(video, true);
         });
 
         iframes.forEach((iframe) => {
@@ -673,15 +673,36 @@ export class CoreFormatTextDirective implements OnChanges {
      * Add media adapt class and apply CoreExternalContentDirective to the media element and its sources and tracks.
      *
      * @param element Video or audio to treat.
+     * @param isVideo Whether it's a video.
      */
-    protected treatMedia(element: HTMLElement): void {
+    protected treatMedia(element: HTMLElement, isVideo: boolean = false): void {
         this.addMediaAdaptClass(element);
         this.addExternalContent(element);
 
+        // Hide download button if not hidden already.
+        let controlsList = element.getAttribute('controlsList') || '';
+        if (!controlsList.includes('nodownload')) {
+            if (!controlsList.trim()) {
+                controlsList = 'nodownload';
+            } else {
+                controlsList = controlsList.split(' ').concat('nodownload').join(' ');
+            }
+
+            element.setAttribute('controlsList', controlsList);
+        }
+
         const sources = Array.from(element.querySelectorAll('source'));
         const tracks = Array.from(element.querySelectorAll('track'));
+        const hasPoster = isVideo && !!element.getAttribute('poster');
+
+        if (isVideo && !hasPoster) {
+            this.fixVideoSrcPlaceholder(element);
+        }
 
         sources.forEach((source) => {
+            if (isVideo && !hasPoster) {
+                this.fixVideoSrcPlaceholder(source);
+            }
             source.setAttribute('target-src', source.getAttribute('src') || '');
             source.removeAttribute('src');
             this.addExternalContent(source);
@@ -695,6 +716,24 @@ export class CoreFormatTextDirective implements OnChanges {
         element.addEventListener('click', (e) => {
             e.stopPropagation();
         });
+    }
+
+    /**
+     * Try to fix the placeholder displayed when a video doesn't have a poster.
+     *
+     * @param element Element to fix.
+     */
+    protected fixVideoSrcPlaceholder(element: HTMLElement): void {
+        const src = element.getAttribute('src');
+        if (!src) {
+            return;
+        }
+
+        if (src.match(/#t=\d/)) {
+            return;
+        }
+
+        element.setAttribute('src', src + '#t=0.001');
     }
 
     /**

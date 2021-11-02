@@ -54,6 +54,8 @@ import { CoreSitesFactory } from './sites-factory';
 import { CoreText } from '@singletons/text';
 import { CoreLoginHelper } from '@features/login/services/login-helper';
 import { CoreErrorWithTitle } from '@classes/errors/errorwithtitle';
+import { CoreAjaxError } from '@classes/errors/ajaxerror';
+import { CoreAjaxWSError } from '@classes/errors/ajaxwserror';
 
 export const CORE_SITE_SCHEMAS = new InjectionToken<CoreSiteSchema[]>('CORE_SITE_SCHEMAS');
 
@@ -183,33 +185,30 @@ export class CoreSitesProvider {
         // Now, replace the siteUrl with the protocol.
         siteUrl = siteUrl.replace(/^https?:\/\//i, protocol);
 
-        try {
-            await this.siteExists(siteUrl);
-        } catch (error) {
-            // Do not continue checking if WS are not enabled.
-            if (error.errorcode == 'enablewsdescription') {
-                error.critical = true;
+        // Create a temporary site to fetch site info.
+        let temporarySite = CoreSitesFactory.makeSite(undefined, siteUrl);
+        let config: CoreSitePublicConfigResponse | undefined;
 
-                throw error;
+        try {
+            config = await temporarySite.getPublicConfig();
+        } catch (error) {
+            const treatedError = await this.treatGetPublicConfigError(temporarySite.getURL(), error);
+            if (treatedError.critical) {
+                throw treatedError; // App received a WS error, stop.
             }
 
-            // Site doesn't exist. Try to add or remove 'www'.
-            const treatedUrl = CoreUrlUtils.addOrRemoveWWW(siteUrl);
+            // Try to add or remove 'www'.
+            temporarySite = CoreSitesFactory.makeSite(undefined, CoreUrlUtils.addOrRemoveWWW(siteUrl));
 
             try {
-                await this.siteExists(treatedUrl);
-
-                // Success, use this new URL as site url.
-                siteUrl = treatedUrl;
+                config = await temporarySite.getPublicConfig();
             } catch (secondError) {
-                // Do not continue checking if WS are not enabled.
-                if (secondError.errorcode == 'enablewsdescription') {
-                    secondError.critical = true;
-
-                    throw secondError;
+                const treatedSecondError = await this.treatGetPublicConfigError(temporarySite.getURL(), secondError);
+                if (treatedSecondError.critical) {
+                    throw treatedSecondError; // App received a WS error, stop.
                 }
 
-                // Return the error.
+                // App didn't receive a WS response, probably cannot connect. Prioritize first error if it's valid.
                 if (CoreTextUtils.getErrorMessageFromError(error)) {
                     throw error;
                 } else {
@@ -218,54 +217,27 @@ export class CoreSitesProvider {
             }
         }
 
-        // Site exists. Create a temporary site to fetch its info.
-        const temporarySite = CoreSitesFactory.makeSite(undefined, siteUrl);
-        let config: CoreSitePublicConfigResponse | undefined;
-
-        try {
-            config = await temporarySite.getPublicConfig();
-
-            // Check that the user can authenticate.
-            if (!config.enablewebservices) {
-                throw new CoreSiteError({
-                    message: Translate.instant('core.login.webservicesnotenabled'),
-                });
-            } else if (!config.enablemobilewebservice) {
-                throw new CoreSiteError({
-                    message: Translate.instant('core.login.mobileservicesnotenabled'),
-                });
-            } else if (config.maintenanceenabled) {
-                let message = Translate.instant('core.sitemaintenance');
-                if (config.maintenancemessage) {
-                    message += config.maintenancemessage;
-                }
-
-                throw new CoreSiteError({
-                    message,
-                });
+        // Check that the user can authenticate.
+        if (!config.enablewebservices) {
+            throw new CoreSiteError({
+                message: Translate.instant('core.login.webservicesnotenabled'),
+                critical: true,
+            });
+        } else if (!config.enablemobilewebservice) {
+            throw new CoreSiteError({
+                message: Translate.instant('core.login.mobileservicesnotenabled'),
+                critical: true,
+            });
+        } else if (config.maintenanceenabled) {
+            let message = Translate.instant('core.sitemaintenance');
+            if (config.maintenancemessage) {
+                message += config.maintenancemessage;
             }
-        } catch (error) {
-            // Error, check if not supported.
-            if (error.available === 1) {
-                // Service supported but an error happened. Return error.
-                if (error.errorcode == 'codingerror') {
-                    // This could be caused by a redirect. Check if it's the case.
-                    const redirect = await CoreUtils.checkRedirect(siteUrl);
 
-                    if (redirect) {
-                        error.error = Translate.instant('core.login.sitehasredirect');
-                    } else {
-                        // We can't be sure if there is a redirect or not. Display cannot connect error.
-                        error.error = Translate.instant('core.cannotconnecttrouble');
-                    }
-                }
-
-                throw new CoreSiteError({
-                    message: error.error,
-                    errorcode: error.errorcode,
-                    critical: true,
-                });
-            }
+            throw new CoreSiteError({
+                message,
+                critical: true,
+            });
         }
 
         siteUrl = temporarySite.getURL();
@@ -274,10 +246,47 @@ export class CoreSitesProvider {
     }
 
     /**
+     * Treat an error returned by getPublicConfig in checkSiteWithProtocol. Converts the error to a CoreSiteError.
+     *
+     * @param siteUrl Site URL.
+     * @param error Error returned.
+     * @return Promise resolved with the treated error.
+     */
+    protected async treatGetPublicConfigError(siteUrl: string, error: CoreAjaxError | CoreAjaxWSError): Promise<CoreSiteError> {
+        if (!('errorcode' in error)) {
+            // The WS didn't return data, probably cannot connect.
+            return new CoreSiteError({
+                message: error.message || '',
+                critical: 'status' in error && error.status === -2, // Certificate error.
+            });
+        }
+
+        // Service supported but an error happened. Return error.
+        if (error.errorcode == 'codingerror') {
+            // This could be caused by a redirect. Check if it's the case.
+            const redirect = await CoreUtils.checkRedirect(siteUrl);
+
+            if (redirect) {
+                error.message = Translate.instant('core.login.sitehasredirect');
+            } else {
+                // We can't be sure if there is a redirect or not. Display cannot connect error.
+                error.message = Translate.instant('core.cannotconnecttrouble');
+            }
+        }
+
+        return new CoreSiteError({
+            message: error.message,
+            errorcode: error.errorcode,
+            critical: true,
+        });
+    }
+
+    /**
      * Check if a site exists.
      *
      * @param siteUrl URL of the site to check.
      * @return A promise to be resolved if the site exists.
+     * @deprecated since app 4.0. Now the app calls uses tool_mobile_get_public_config to check if site exists.
      */
     async siteExists(siteUrl: string): Promise<void> {
         let data: CoreSitesLoginTokenResponse;
@@ -305,7 +314,7 @@ export class CoreSitesProvider {
         if (data.errorcode && (data.errorcode == 'enablewsdescription' || data.errorcode == 'requirecorrectaccess')) {
             throw new CoreSiteError({
                 errorcode: data.errorcode,
-                message: data.error!,
+                message: data.error ?? '',
             });
         }
 
@@ -713,31 +722,33 @@ export class CoreSitesProvider {
 
             const siteId = this.getCurrentSiteId();
             const downloadUrl = CoreApp.getAppStoreUrl(storesConfig);
+            let promise: Promise<unknown>;
 
             if (downloadUrl != null) {
                 // Do not block interface.
-                CoreDomUtils.showConfirm(
+                promise = CoreDomUtils.showConfirm(
                     Translate.instant('core.updaterequireddesc', { $a: config.tool_mobile_minimumversion }),
                     Translate.instant('core.updaterequired'),
                     Translate.instant('core.download'),
                     Translate.instant(siteId ? 'core.mainmenu.logout' : 'core.cancel'),
-                ).then(() => CoreUtils.openInBrowser(downloadUrl)).catch(() => {
+                ).then(() => CoreUtils.openInBrowser(downloadUrl, { showBrowserWarning: false })).catch(() => {
                     // Do nothing.
                 });
             } else {
-                CoreDomUtils.showAlert(
+                // Do not block interface.
+                promise = CoreDomUtils.showAlert(
                     Translate.instant('core.updaterequired'),
                     Translate.instant('core.updaterequireddesc', { $a: config.tool_mobile_minimumversion }),
-                );
+                ).then((alert) => alert.onWillDismiss());
             }
 
-            if (siteId) {
-                // Logout the currentSite.
-                await this.logout();
-
-                // Always expire the token.
-                await this.setSiteLoggedOut(siteId, true);
-            }
+            promise.finally(() => {
+                if (siteId) {
+                    // Logout the currentSite and expire the token.
+                    this.logout();
+                    this.setSiteLoggedOut(siteId, true);
+                }
+            });
 
             throw new CoreError('Current app version is lower than required version.');
         }
@@ -794,33 +805,49 @@ export class CoreSitesProvider {
             return false;
         }
 
-        let config: CoreSitePublicConfigResponse | undefined;
+        this.login(siteId);
+        // Get some data in background, don't block the UI.
+        this.getPublicConfigAndCheckApplication(site);
+        this.updateSiteInfo(siteId);
 
-        try {
-            config = await site.getPublicConfig();
-        } catch (error) {
-            // Error getting config, maybe the user is offline.
-        }
+        return true;
+    }
 
+    /**
+     * Get site public config and check if app can access the site.
+     *
+     * @param site Site.
+     * @return Promise resolved when done.
+     */
+    protected async getPublicConfigAndCheckApplication(site: CoreSite): Promise<void> {
         try {
+            const config = await site.getPublicConfig();
+
             await this.checkApplication(config);
-
-            this.login(siteId);
-            // Update site info. We don't block the UI.
-            this.updateSiteInfo(siteId);
-
-            return true;
-        } catch (error) {
-            return false;
+        } catch {
+            // Ignore errors, maybe the user is offline.
         }
     }
 
     /**
-     * Get current site.
+     * Get current site or undefined if none.
+     *
+     * @return Current site or undefined if none.
+     */
+    getCurrentSite(): CoreSite | undefined {
+        return this.currentSite;
+    }
+
+    /**
+     * Get current site or fail if none.
      *
      * @return Current site.
      */
-    getCurrentSite(): CoreSite | undefined {
+    getRequiredCurrentSite(): CoreSite {
+        if (!this.currentSite) {
+            throw new CoreError('You aren\'t authenticated in any site.');
+        }
+
         return this.currentSite;
     }
 
@@ -935,9 +962,13 @@ export class CoreSitesProvider {
         } else {
             // Retrieve and create the site.
             const db = await this.appDB;
-            const data = await db.getRecord<SiteDBEntry>(SITES_TABLE_NAME, { id: siteId });
+            try {
+                const data = await db.getRecord<SiteDBEntry>(SITES_TABLE_NAME, { id: siteId });
 
-            return this.makeSiteFromSiteListEntry(data);
+                return this.makeSiteFromSiteListEntry(data);
+            } catch {
+                throw new CoreError('SiteId not found');
+            }
         }
     }
 
@@ -1112,6 +1143,17 @@ export class CoreSitesProvider {
         const sites = await db.getAllRecords<SiteDBEntry>(SITES_TABLE_NAME);
 
         return sites.map((site) => site.id);
+    }
+
+    /**
+     * Get instances of all stored sites.
+     *
+     * @return Promise resolved when the sites are retrieved.
+     */
+    async getSitesInstances(): Promise<CoreSite[]> {
+        const siteIds = await this.getSitesIds();
+
+        return await Promise.all(siteIds.map(async (siteId) => await this.getSite(siteId)));
     }
 
     /**
@@ -1487,7 +1529,9 @@ export class CoreSitesProvider {
             return Promise.resolve();
         }
 
-        if (this.siteSchemasMigration[site.id]) {
+        const siteId = site.id;
+
+        if (this.siteSchemasMigration[site.id] !== undefined) {
             return this.siteSchemasMigration[site.id];
         }
 
@@ -1500,7 +1544,7 @@ export class CoreSitesProvider {
         this.siteSchemasMigration[site.id] = promise;
 
         return promise.finally(() => {
-            delete this.siteSchemasMigration[site.id!];
+            delete this.siteSchemasMigration[siteId];
         });
     }
 

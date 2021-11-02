@@ -42,7 +42,15 @@ export class AddonStorageManagerCourseStoragePage implements OnInit {
      * View loaded.
      */
     async ngOnInit(): Promise<void> {
-        this.course = CoreNavigator.getRouteParam<CoreEnrolledCourseData>('course')!;
+        try {
+            this.course = CoreNavigator.getRequiredRouteParam<CoreEnrolledCourseData>('course');
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
+
+            CoreNavigator.back();
+
+            return;
+        }
 
         this.sections = await CoreCourse.getSections(this.course.id, false, true);
         CoreCourseHelper.addHandlerDataForModules(this.sections, this.course.id);
@@ -55,7 +63,6 @@ export class AddonStorageManagerCourseStoragePage implements OnInit {
             section.modules.forEach((module) => {
                 module.parentSection = section;
                 module.totalSize = 0;
-                module.modNameTranslated = CoreCourse.translateModuleName(module.modname) || '';
 
                 // Note: This function only gets the size for modules which are downloadable.
                 // For other modules it always returns 0, even if they have downloaded some files.
@@ -227,5 +234,4 @@ type AddonStorageManagerCourseSection = Omit<CoreCourseSection, 'modules'> & {
 type AddonStorageManagerModule = CoreCourseModule & {
     parentSection?: AddonStorageManagerCourseSection;
     totalSize?: number;
-    modNameTranslated?: string;
 };

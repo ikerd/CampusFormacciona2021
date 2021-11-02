@@ -32,7 +32,7 @@ import { CoreDomUtils } from '@services/utils/dom';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreTimeUtils } from '@services/utils/time';
 import { CoreUrlUtils, CoreUrlParams } from '@services/utils/url';
-import { CoreUtils, PromiseDefer } from '@services/utils/utils';
+import { CoreUtils, CoreUtilsOpenInBrowserOptions, PromiseDefer } from '@services/utils/utils';
 import { CoreConstants } from '@/core/constants';
 import { SQLiteDB } from '@classes/sqlitedb';
 import { CoreError } from '@classes/errors/error';
@@ -40,6 +40,16 @@ import { CoreWSError } from '@classes/errors/wserror';
 import { CoreLogger } from '@singletons/logger';
 import { Translate } from '@singletons';
 import { CoreIonLoadingElement } from './ion-loading';
+import { CoreLang } from '@services/lang';
+
+/**
+ * QR Code type enumeration.
+ */
+export enum CoreSiteQRCodeType {
+    QR_CODE_DISABLED = 0, // QR code disabled value
+    QR_CODE_URL = 1, // QR code type URL value
+    QR_CODE_LOGIN = 2, // QR code type login value
+}
 
 /**
  * Class that represents a site (combination of site + user).
@@ -76,6 +86,7 @@ export class CoreSite {
         '3.9': 2020061500,
         '3.10': 2020110900,
         '3.11': 2021051700,
+        '4.0': 2021100300, // @todo [4.0] replace with right value when released. Using a tmp value to be able to test new things.
     };
 
     // Possible cache update frequencies.
@@ -299,10 +310,7 @@ export class CoreSite {
 
         // Index function by name to speed up wsAvailable method.
         if (infos?.functions) {
-            infos.functionsByName = {};
-            infos.functions.forEach((func) => {
-                infos.functionsByName![func.name] = func;
-            });
+            infos.functionsByName = CoreUtils.arrayToObject(infos.functions, 'name');
         }
     }
 
@@ -565,9 +573,14 @@ export class CoreSite {
 
             // Call the WS.
             try {
+                // Send the language to use. Do it after checking cache to prevent losing offline data when changing language.
+                data.moodlewssettinglang = preSets.lang ?? await CoreLang.getCurrentLanguage();
+                data.moodlewssettinglang = data.moodlewssettinglang.replace('-', '_'); // Moodle uses underscore instead of dash.
+
                 const response = await this.callOrEnqueueRequest<T>(method, data, preSets, wsPreSets);
 
                 if (preSets.saveToCache) {
+                    delete data.moodlewssettinglang;
                     this.saveToCache(method, data, response, preSets);
                 }
 
@@ -777,7 +790,8 @@ export class CoreSite {
             return;
         }
 
-        const requestsData = {
+        let lang: string | undefined;
+        const requestsData: Record<string, unknown> = {
             requests: requests.map((request) => {
                 const args = {};
                 const settings = {};
@@ -790,6 +804,11 @@ export class CoreSite {
                         if (match[1] == 'settingfilter' || match[1] == 'settingfileurl') {
                             // Undo special treatment of these settings in CoreWSProvider.convertValuesToString.
                             value = (value == 'true' ? '1' : '0');
+                        } else if (match[1] == 'settinglang') {
+                            // Use the lang globally to avoid exceptions with languages not installed.
+                            lang = value;
+
+                            return;
                         }
                         settings[match[1]] = value;
                     } else {
@@ -804,6 +823,7 @@ export class CoreSite {
                 };
             }),
         };
+        requestsData.moodlewssettinglang = lang;
 
         const wsPresets: CoreWSPreSets = {
             siteUrl: this.siteUrl,
@@ -885,7 +905,8 @@ export class CoreSite {
         preSets: CoreSiteWSPreSets,
         emergency?: boolean,
     ): Promise<T> {
-        if (!this.db || !preSets.getFromCache) {
+        const db = this.db;
+        if (!db || !preSets.getFromCache) {
             throw new CoreError('Get from cache is disabled.');
         }
 
@@ -893,11 +914,11 @@ export class CoreSite {
         let entry: CoreSiteWSCacheRecord | undefined;
 
         if (preSets.getCacheUsingCacheKey || (emergency && preSets.getEmergencyCacheUsingCacheKey)) {
-            const entries = await this.db.getRecords<CoreSiteWSCacheRecord>(CoreSite.WS_CACHE_TABLE, { key: preSets.cacheKey });
+            const entries = await db.getRecords<CoreSiteWSCacheRecord>(CoreSite.WS_CACHE_TABLE, { key: preSets.cacheKey });
 
             if (!entries.length) {
                 // Cache key not found, get by params sent.
-                entry = await this.db!.getRecord(CoreSite.WS_CACHE_TABLE, { id });
+                entry = await db.getRecord(CoreSite.WS_CACHE_TABLE, { id });
             } else {
                 if (entries.length > 1) {
                     // More than one entry found. Search the one with same ID as this call.
@@ -909,7 +930,7 @@ export class CoreSite {
                 }
             }
         } else {
-            entry = await this.db!.getRecord(CoreSite.WS_CACHE_TABLE, { id });
+            entry = await db.getRecord(CoreSite.WS_CACHE_TABLE, { id });
         }
 
         if (typeof entry == 'undefined') {
@@ -924,7 +945,7 @@ export class CoreSite {
         if (!preSets.omitExpires) {
             expirationTime = entry.expirationTime + this.getExpirationDelay(preSets.updateFrequency);
 
-            if (now > expirationTime!) {
+            if (now > expirationTime) {
                 this.logger.debug('Cached element found, but it is expired');
 
                 throw new CoreError('Cache entry is expired.');
@@ -1333,38 +1354,38 @@ export class CoreSite {
             siteUrl: this.siteUrl,
         };
 
-        let config: CoreSitePublicConfigResponse | undefined;
+        let config: CoreSitePublicConfigResponse;
 
         try {
-            config = await CoreWS.callAjax('tool_mobile_get_public_config', {}, preSets);
+            config = await CoreWS.callAjax<CoreSitePublicConfigResponse>('tool_mobile_get_public_config', {}, preSets);
         } catch (error) {
-            if ((!this.getInfo() || this.isVersionGreaterEqualThan('3.8')) && error && error.errorcode == 'codingerror') {
-                // This error probably means that there is a redirect in the site. Try to use a GET request.
-                preSets.noLogin = true;
-                preSets.useGet = true;
-
-                try {
-                    config = await CoreWS.callAjax('tool_mobile_get_public_config', {}, preSets);
-                } catch (error2) {
-                    if (this.getInfo() && this.isVersionGreaterEqualThan('3.8')) {
-                        // GET is supported, return the second error.
-                        throw error2;
-                    } else {
-                        // GET not supported or we don't know if it's supported. Return first error.
-                        throw error;
-                    }
-                }
+            if (!error || error.errorcode !== 'codingerror' || (this.getInfo() && !this.isVersionGreaterEqualThan('3.8'))) {
+                throw error;
             }
 
-            throw error;
+            // This error probably means that there is a redirect in the site. Try to use a GET request.
+            preSets.noLogin = true;
+            preSets.useGet = true;
+
+            try {
+                config = await CoreWS.callAjax<CoreSitePublicConfigResponse>('tool_mobile_get_public_config', {}, preSets);
+            } catch (error2) {
+                if (this.getInfo() && this.isVersionGreaterEqualThan('3.8')) {
+                    // GET is supported, return the second error.
+                    throw error2;
+                } else {
+                    // GET not supported or we don't know if it's supported. Return first error.
+                    throw error;
+                }
+            }
         }
 
         // Use the wwwroot returned by the server.
-        if (config!.httpswwwroot) {
-            this.siteUrl = CoreUrlUtils.removeUrlParams(config!.httpswwwroot); // Make sure the URL doesn't have params.
+        if (config.httpswwwroot) {
+            this.siteUrl = CoreUrlUtils.removeUrlParams(config.httpswwwroot); // Make sure the URL doesn't have params.
         }
 
-        return config!;
+        return config;
     }
 
     /**
@@ -1372,10 +1393,15 @@ export class CoreSite {
      *
      * @param url The URL to open.
      * @param alertMessage If defined, an alert will be shown before opening the browser.
+     * @param options Other options.
      * @return Promise resolved when done, rejected otherwise.
      */
-    async openInBrowserWithAutoLogin(url: string, alertMessage?: string): Promise<void> {
-        await this.openWithAutoLogin(false, url, undefined, alertMessage);
+    async openInBrowserWithAutoLogin(
+        url: string,
+        alertMessage?: string,
+        options: CoreUtilsOpenInBrowserOptions = {},
+    ): Promise<void> {
+        await this.openWithAutoLogin(false, url, options, alertMessage);
     }
 
     /**
@@ -1383,10 +1409,15 @@ export class CoreSite {
      *
      * @param url The URL to open.
      * @param alertMessage If defined, an alert will be shown before opening the browser.
+     * @param options Other options.
      * @return Promise resolved when done, rejected otherwise.
      */
-    async openInBrowserWithAutoLoginIfSameSite(url: string, alertMessage?: string): Promise<void> {
-        await this.openWithAutoLoginIfSameSite(false, url, undefined, alertMessage);
+    async openInBrowserWithAutoLoginIfSameSite(
+        url: string,
+        alertMessage?: string,
+        options: CoreUtilsOpenInBrowserOptions = {},
+    ): Promise<void> {
+        await this.openWithAutoLoginIfSameSite(false, url, options, alertMessage);
     }
 
     /**
@@ -1433,7 +1464,7 @@ export class CoreSite {
     async openWithAutoLogin(
         inApp: boolean,
         url: string,
-        options?: InAppBrowserOptions,
+        options: InAppBrowserOptions & CoreUtilsOpenInBrowserOptions = {},
         alertMessage?: string,
     ): Promise<InAppBrowserObject | void> {
         // Get the URL to open.
@@ -1449,13 +1480,14 @@ export class CoreSite {
             );
 
             await alert.onDidDismiss();
+            options.showBrowserWarning = false; // A warning already shown, no need to show another.
         }
 
         // Open the URL.
         if (inApp) {
             return CoreUtils.openInApp(url, options);
         } else {
-            return CoreUtils.openInBrowser(url);
+            return CoreUtils.openInBrowser(url, options);
         }
     }
 
@@ -1471,7 +1503,7 @@ export class CoreSite {
     async openWithAutoLoginIfSameSite(
         inApp: boolean,
         url: string,
-        options?: InAppBrowserOptions,
+        options: InAppBrowserOptions & CoreUtilsOpenInBrowserOptions = {},
         alertMessage?: string,
     ): Promise<InAppBrowserObject | void> {
         if (this.containsUrl(url)) {
@@ -1480,7 +1512,7 @@ export class CoreSite {
             if (inApp) {
                 return Promise.resolve(CoreUtils.openInApp(url, options));
             } else {
-                CoreUtils.openInBrowser(url);
+                CoreUtils.openInBrowser(url, options);
             }
         }
     }
@@ -1714,7 +1746,12 @@ export class CoreSite {
 
         if (CoreSite.MOODLE_RELEASES[data.major] === undefined) {
             // Major version not found. Use the last one.
-            data.major = Object.keys(CoreSite.MOODLE_RELEASES).pop()!;
+            const major = Object.keys(CoreSite.MOODLE_RELEASES).pop();
+            if (!major) {
+                return 0;
+            }
+
+            data.major = major;
         }
 
         return CoreSite.MOODLE_RELEASES[data.major] + data.minor;
@@ -1923,6 +1960,11 @@ export type CoreSiteWSPreSets = {
     rewriteurls?: boolean;
 
     /**
+     * Language to send to the WebService (moodlewssettinglang). Defaults to app's language.
+     */
+    lang?: string;
+
+    /**
      * Defaults to true. Set to false when the expected response is null.
      */
     responseExpected?: boolean;
@@ -2122,6 +2164,7 @@ export type CoreSitePublicConfigResponse = {
     tool_mobile_androidappid?: string; // Android app's unique identifier.
     // eslint-disable-next-line @typescript-eslint/naming-convention
     tool_mobile_setuplink?: string; // App download page.
+    tool_mobile_qrcodetype?: CoreSiteQRCodeType; // eslint-disable-line @typescript-eslint/naming-convention
     warnings?: CoreWSExternalWarning[];
 };
 

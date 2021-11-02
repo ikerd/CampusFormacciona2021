@@ -15,7 +15,8 @@
 import { CoreConstants } from '@/core/constants';
 import { Injectable, Type } from '@angular/core';
 import { CoreContentLinksHelper } from '@features/contentlinks/services/contentlinks-helper';
-import { CoreCourse, CoreCourseAnyModuleData } from '@features/course/services/course';
+import { CoreModuleHandlerBase } from '@features/course/classes/module-base-handler';
+import { CoreCourse } from '@features/course/services/course';
 import { CoreCourseModule } from '@features/course/services/course-helper';
 import { CoreCourseModuleHandler, CoreCourseModuleHandlerData } from '@features/course/services/module-delegate';
 import { CoreNavigationOptions, CoreNavigator } from '@services/navigator';
@@ -30,12 +31,13 @@ import { AddonModUrlHelper } from '../url-helper';
  * Handler to support url modules.
  */
 @Injectable({ providedIn: 'root' })
-export class AddonModUrlModuleHandlerService implements CoreCourseModuleHandler {
+export class AddonModUrlModuleHandlerService extends CoreModuleHandlerBase implements CoreCourseModuleHandler {
 
     static readonly PAGE_NAME = 'mod_url';
 
     name = 'AddonModUrl';
     modName = 'url';
+    protected pageName = AddonModUrlModuleHandlerService.PAGE_NAME;
 
     supportedFeatures = {
         [CoreConstants.FEATURE_MOD_ARCHETYPE]: CoreConstants.MOD_ARCHETYPE_RESOURCE,
@@ -52,14 +54,7 @@ export class AddonModUrlModuleHandlerService implements CoreCourseModuleHandler 
     /**
      * @inheritdoc
      */
-    async isEnabled(): Promise<boolean> {
-        return true;
-    }
-
-    /**
-     * @inheritdoc
-     */
-    getData(module: CoreCourseAnyModuleData, courseId: number): CoreCourseModuleHandlerData {
+    async getData(module: CoreCourseModule, courseId: number): Promise<CoreCourseModuleHandlerData> {
 
         /**
          * Open the URL.
@@ -82,7 +77,7 @@ export class AddonModUrlModuleHandlerService implements CoreCourseModuleHandler 
         };
 
         const handlerData: CoreCourseModuleHandlerData = {
-            icon: CoreCourse.getModuleIconSrc(this.modName, 'modicon' in module ? module.modicon : undefined),
+            icon: await CoreCourse.getModuleIconSrc(module.modname, module.modicon),
             title: module.name,
             class: 'addon-mod_url-handler',
             showDownloadButton: false,
@@ -116,13 +111,18 @@ export class AddonModUrlModuleHandlerService implements CoreCourseModuleHandler 
             }],
         };
 
-        this.hideLinkButton(module, courseId).then((hideButton) => {
-            handlerData.buttons![0]!.hidden = hideButton;
+        this.hideLinkButton(module, courseId).then(async (hideButton) => {
+            if (!handlerData.buttons) {
+                return;
+            }
+
+            handlerData.buttons[0].hidden = hideButton;
 
             if (module.contents && module.contents[0]) {
+                const icon = AddonModUrl.guessIcon(module.contents[0].fileurl);
+
                 // Calculate the icon to use.
-                handlerData.icon = AddonModUrl.guessIcon(module.contents[0].fileurl) ||
-                    CoreCourse.getModuleIconSrc(this.modName, 'modicon' in module ? module.modicon : undefined);
+                handlerData.icon = await CoreCourse.getModuleIconSrc(module.modname, module.modicon, icon);
             }
 
             return;
@@ -140,7 +140,7 @@ export class AddonModUrlModuleHandlerService implements CoreCourseModuleHandler 
      * @param courseId The course ID.
      * @return Resolved when done.
      */
-    protected async hideLinkButton(module: CoreCourseAnyModuleData, courseId: number): Promise<boolean> {
+    protected async hideLinkButton(module: CoreCourseModule, courseId: number): Promise<boolean> {
         try {
             const contents = await CoreCourse.getModuleContents(module, courseId, undefined, false, false, undefined, this.modName);
 
@@ -154,7 +154,7 @@ export class AddonModUrlModuleHandlerService implements CoreCourseModuleHandler 
     /**
      * @inheritdoc
      */
-    async getMainComponent(): Promise<Type<unknown> | undefined> {
+    async getMainComponent(): Promise<Type<unknown>> {
         return AddonModUrlIndexComponent;
     }
 
@@ -165,7 +165,7 @@ export class AddonModUrlModuleHandlerService implements CoreCourseModuleHandler 
      * @param courseId Course ID.
      * @return Promise resolved with boolean.
      */
-    protected async shouldOpenLink(module: CoreCourseModule, courseId: number): Promise<boolean> {
+    protected async shouldOpenLink(module: CoreCourseModule, courseId?: number): Promise<boolean> {
         try {
             const contents = await CoreCourse.getModuleContents(module, courseId, undefined, false, false, undefined, this.modName);
 
@@ -177,7 +177,7 @@ export class AddonModUrlModuleHandlerService implements CoreCourseModuleHandler 
                 return true;
             } else {
                 // Not handled by the app, check the display type.
-                const url = await CoreUtils.ignoreErrors(AddonModUrl.getUrl(courseId, module.id));
+                const url = courseId ? await CoreUtils.ignoreErrors(AddonModUrl.getUrl(courseId, module.id)) : undefined;
                 const displayType = AddonModUrl.getFinalDisplayType(url);
 
                 return displayType == CoreConstants.RESOURCELIB_DISPLAY_OPEN ||
@@ -192,7 +192,7 @@ export class AddonModUrlModuleHandlerService implements CoreCourseModuleHandler 
      * @inheritdoc
      */
     manualCompletionAlwaysShown(module: CoreCourseModule): Promise<boolean> {
-        return this.shouldOpenLink(module, module.course!);
+        return this.shouldOpenLink(module, module.course);
     }
 
 }

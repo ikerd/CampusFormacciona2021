@@ -35,7 +35,7 @@ import { CoreTextUtils } from '@services/utils/text';
 import { CoreForms } from '@singletons/form';
 
 /**
- * Page that displays a "splash screen" while the app is being initialized.
+ * Site (url) chooser when adding a new site.
  */
 @Component({
     selector: 'page-core-login-site',
@@ -498,7 +498,12 @@ export class CoreLoginSitePage implements OnInit {
 
         if (scheme && scheme != 'http' && scheme != 'https') {
             CoreDomUtils.showErrorModal(Translate.instant('core.errorurlschemeinvalidscheme', { $a: text }));
-        } else if (CoreLoginHelper.isSiteUrlAllowed(text)) {
+
+            return;
+        }
+
+        const allowed = await CoreLoginHelper.isSiteUrlAllowed(text);
+        if (allowed) {
             // Put the text in the field (if present).
             this.siteForm.controls.siteUrl.setValue(text);
 

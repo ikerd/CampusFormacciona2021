@@ -191,7 +191,7 @@ export class CoreMimetypeUtilsProvider {
                 case 'audio':
                 case 'video':
                     return [
-                        `<${embedType} controls title="${filename}" src="${path}">`,
+                        `<${embedType} controls title="${filename}" src="${path}" controlsList="nodownload">`,
                         `<source src="${path}" type="${mimeType}">`,
                         `</${embedType}>`,
                     ].join('');
@@ -310,6 +310,11 @@ export class CoreMimetypeUtilsProvider {
             candidate = split.pop()!.toLowerCase();
             // Remove params if any.
             position = candidate.indexOf('?');
+            if (position > -1) {
+                candidate = candidate.substr(0, position);
+            }
+            // Remove anchor if any.
+            position = candidate.indexOf('#');
             if (position > -1) {
                 candidate = candidate.substr(0, position);
             }
